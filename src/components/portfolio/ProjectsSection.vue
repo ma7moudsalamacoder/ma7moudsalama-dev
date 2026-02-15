@@ -16,18 +16,23 @@ const projects = [
 <template>
   <section id="projects" class="relative bg-white py-24 dark:bg-surface-dark">
     <div class="section-shell">
-      <div class="mb-16 flex flex-col justify-between gap-6 md:flex-row md:items-end">
-        <div>
+      <div v-reveal class="mb-16 flex flex-col justify-between gap-6 md:flex-row md:items-end">
+        <div v-reveal="80">
           <h2 class="section-kicker">Selected Works</h2>
           <h3 class="section-heading">Recent Deployments</h3>
         </div>
-        <a class="flex items-center gap-2 font-bold text-primary hover:underline" href="#">
+        <a v-reveal="140" class="flex items-center gap-2 font-bold text-primary hover:underline" href="#">
           EXPLORE ALL GITHUB REPOS <span class="material-symbols-outlined">north_east</span>
         </a>
       </div>
 
       <div class="grid gap-8 md:grid-cols-2">
-        <article v-for="project in projects" :key="project.title" class="project-card group">
+        <article
+          v-for="(project, index) in projects"
+          :key="project.title"
+          v-reveal="index * 110"
+          class="project-card group"
+        >
           <div class="aspect-video bg-gradient-to-br from-primary/10 via-background-light to-surface-light dark:via-background-dark dark:to-surface-dark" />
           <div class="p-8">
             <div class="mb-4 flex gap-2">

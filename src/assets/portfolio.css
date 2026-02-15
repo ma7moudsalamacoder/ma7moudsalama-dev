@@ -18,6 +18,92 @@
   border-color: rgba(255, 255, 255, 0.05);
 }
 
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s ease;
+  will-change: opacity, transform;
+}
+
+.reveal-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+html,
+body,
+*,
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.45) transparent;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+*::-webkit-scrollbar,
+.thin-scrollbar::-webkit-scrollbar {
+  height: 4px !important;
+  width: 4px !important;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track,
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb,
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgba(0, 212, 255, 0.45) !important;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:hover,
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.65) !important;
+}
+
+html.dark,
+html.dark body,
+html.dark *,
+html.dark .thin-scrollbar {
+  scrollbar-color: rgba(0, 225, 255, 0.55) transparent;
+}
+
+html.dark *::-webkit-scrollbar-thumb,
+html.dark .thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 225, 255, 0.55) !important;
+}
+
+html.dark *::-webkit-scrollbar-thumb:hover,
+html.dark .thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 225, 255, 0.75) !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-on-scroll {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 @layer components {
   .section-shell {
     @apply mx-auto max-w-7xl px-6;

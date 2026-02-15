@@ -51,13 +51,18 @@ const skillGroups = [
 <template>
   <section id="skills" class="bg-background-light py-24 dark:bg-background-dark">
     <div class="section-shell">
-      <div class="mb-16 text-center">
+      <div v-reveal class="mb-16 text-center">
         <h2 class="section-kicker">Technical Expertise</h2>
         <h3 class="section-heading">Powering The Next Generation</h3>
       </div>
 
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <article v-for="group in skillGroups" :key="group.title" class="skill-card">
+        <article
+          v-for="(group, index) in skillGroups"
+          :key="group.title"
+          v-reveal="index * 70"
+          class="skill-card"
+        >
           <div class="skill-icon-wrap">
             <span class="material-symbols-outlined text-3xl">{{ group.icon }}</span>
           </div>

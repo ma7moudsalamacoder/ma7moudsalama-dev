@@ -24,6 +24,7 @@ const { isDark, toggleTheme } = useTheme()
         <a class="nav-link" href="#about">About</a>
         <a class="nav-link" href="#skills">Expertise</a>
         <a class="nav-link" href="#projects">Projects</a>
+        <a class="nav-link" href="#media-center">Media Center</a>
         <a class="nav-link" href="#contact">Contact</a>
       </nav>
 

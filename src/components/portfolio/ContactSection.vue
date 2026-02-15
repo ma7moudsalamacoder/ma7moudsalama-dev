@@ -27,7 +27,7 @@ const links = [
     />
 
     <div class="section-shell relative z-10">
-      <div class="max-w-3xl">
+      <div v-reveal class="max-w-3xl">
         <h2 class="section-kicker">Get In Touch</h2>
         <h3 class="mb-8 text-4xl font-bold text-text-main dark:text-white md:text-5xl">
           Let's Build Something Great Together
@@ -37,7 +37,13 @@ const links = [
         </p>
 
         <div class="mb-12 grid gap-8 sm:grid-cols-2">
-          <a v-for="item in links" :key="item.label" :href="item.href" class="contact-card">
+          <a
+            v-for="(item, index) in links"
+            :key="item.label"
+            :href="item.href"
+            v-reveal="index * 90"
+            class="contact-card"
+          >
             <div class="skill-icon-wrap mb-0 size-12">
               <span class="material-symbols-outlined">{{ item.icon }}</span>
             </div>
