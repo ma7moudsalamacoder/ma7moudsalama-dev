@@ -1,0 +1,73 @@
+.circuit-bg {
+  background-image: radial-gradient(circle at 2px 2px, rgba(0, 212, 255, 0.1) 1px, transparent 0);
+  background-size: 40px 40px;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+}
+
+.dark .circuit-bg {
+  background-image: radial-gradient(circle at 2px 2px, rgba(0, 225, 255, 0.05) 1px, transparent 0);
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+@layer components {
+  .section-shell {
+    @apply mx-auto max-w-7xl px-6;
+  }
+
+  .section-kicker {
+    @apply mb-4 text-sm font-bold uppercase tracking-widest text-primary;
+  }
+
+  .section-heading {
+    @apply text-4xl font-bold text-text-main dark:text-white;
+  }
+
+  .nav-link {
+    @apply text-sm font-medium uppercase tracking-widest text-text-main transition-colors hover:text-primary dark:text-slate-100;
+  }
+
+  .btn-primary {
+    @apply flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-8 py-4 text-center font-bold text-background-dark transition-all hover:scale-105 sm:w-auto;
+  }
+
+  .btn-secondary {
+    @apply w-full rounded-lg border border-primary/40 px-8 py-4 text-center font-bold text-primary transition-all hover:bg-primary/10 sm:w-auto;
+  }
+
+  .skill-card {
+    @apply rounded-xl border border-border-light bg-white p-8 shadow-tech transition-all duration-300 hover:border-primary dark:border-border-dark dark:bg-surface-dark dark:shadow-none dark:hover:shadow-[0_0_20px_rgba(0,225,255,0.22)];
+  }
+
+  .skill-icon-wrap {
+    @apply mb-6 flex size-14 items-center justify-center rounded-lg bg-primary/10 text-primary;
+  }
+
+  .project-card {
+    @apply overflow-hidden rounded-xl border border-border-light bg-background-light shadow-sm transition-all hover:border-primary dark:border-primary/20 dark:bg-background-dark dark:shadow-none;
+  }
+
+  .chip {
+    @apply rounded border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary;
+  }
+
+  .contact-card {
+    @apply flex items-center gap-4 rounded-xl border border-border-light bg-white p-6 shadow-sm transition-all hover:border-primary dark:border-border-dark dark:bg-surface-dark dark:shadow-none;
+  }
+
+  .metric-box {
+    @apply border-l-2 border-primary bg-primary/5 p-4 shadow-sm dark:shadow-none;
+  }
+
+  .metric-label {
+    @apply text-xs font-bold uppercase tracking-widest text-text-muted dark:text-slate-500;
+  }
+}
