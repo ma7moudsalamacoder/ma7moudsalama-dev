@@ -57,7 +57,7 @@
         Solver
       </p>
 
-      <p class="mx-auto mb-10 max-w-2xl text-base text-slate-600 dark:text-slate-500 md:text-lg">
+      <p class="mx-auto mb-8 max-w-2xl text-base text-slate-600 dark:text-slate-500 md:text-lg">
         Crafting high-performance backend systems and scalable web applications with a focus on
         clean architecture and technical excellence.
       </p>
