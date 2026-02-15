@@ -8,7 +8,9 @@
     <div
       class="pointer-events-none absolute -right-24 bottom-16 h-80 w-80 rounded-full bg-cyan-300/20 blur-[130px] dark:bg-primary/10"
     />
-    <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/60 to-transparent dark:from-background-dark/40" />
+    <div
+      class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/60 to-transparent dark:from-background-dark/40"
+    />
 
     <div class="pointer-events-none absolute inset-0 z-0 opacity-30 dark:opacity-20">
       <div
@@ -55,7 +57,7 @@
         Solver
       </p>
 
-      <p class="mx-auto mb-12 max-w-2xl text-base text-slate-600 dark:text-slate-500 md:text-lg">
+      <p class="mx-auto mb-10 max-w-2xl text-base text-slate-600 dark:text-slate-500 md:text-lg">
         Crafting high-performance backend systems and scalable web applications with a focus on
         clean architecture and technical excellence.
       </p>
