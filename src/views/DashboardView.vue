@@ -100,11 +100,22 @@ const showMediaModal = ref(false)
 const showSkillModal = ref(false)
 const showProjectModal = ref(false)
 const showStoreApiModal = ref(false)
+const showStoreApiTestModal = ref(false)
 const storeApiSaving = ref(false)
 const storeApiLoading = ref(true)
 const storeBearerSaving = ref(false)
+const storeApiTestLoading = ref(false)
 const activeStoreApiId = ref<string | null>(null)
 const storeBearerApiKey = ref('')
+
+type StoreApiTestResult = {
+  ok: boolean
+  status: number
+  statusText: string
+  durationMs: number
+  headers: Record<string, string>
+  body: string
+}
 
 type StoreApiCategory = 'analytics' | 'users' | 'products' | 'payments'
 type StoreApiAction = {
@@ -124,6 +135,15 @@ const storeApiForm = reactive<StoreApiAction>({
   action: '',
   description: '',
 })
+
+const storeApiTestForm = reactive({
+  route: '',
+  method: 'GET',
+  body: '',
+})
+const storeApiTestResult = ref<StoreApiTestResult | null>(null)
+const storeApiTestError = ref('')
+const storeApiResponseView = ref<'raw' | 'graph'>('raw')
 
 const storeApiMethodOptions = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
@@ -252,6 +272,119 @@ const weeklyUniqueVisitorsMax = computed(() =>
     ? Math.max(...weeklyUniqueVisitors.value.map((item) => item.count), 1)
     : 1,
 )
+
+type BrainstormNode = {
+  id: string
+  depth: number
+  label: string
+  value: string
+  parentId: string | null
+  parentLabel: string
+}
+
+const apiResponseBrainstorm = computed<BrainstormNode[]>(() => {
+  const body = storeApiTestResult.value?.body ?? ''
+  if (!body || body === '(empty response)') return []
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return []
+  }
+
+  const nodes: BrainstormNode[] = []
+  const maxNodes = 120
+  const maxDepth = 6
+
+  function shortValue(value: unknown) {
+    if (value === null) return 'null'
+    if (typeof value === 'string') return value.length > 48 ? `${value.slice(0, 48)}...` : value
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    if (Array.isArray(value)) return `${value.length} items`
+    if (typeof value === 'object') return `${Object.keys(value as Record<string, unknown>).length} fields`
+    return String(value)
+  }
+
+  function visit(
+    value: unknown,
+    label: string,
+    depth: number,
+    parentId: string | null,
+    parentLabel: string,
+    keyPath: string,
+  ) {
+    if (nodes.length >= maxNodes || depth > maxDepth) return
+
+    nodes.push({
+      id: keyPath,
+      depth,
+      label,
+      value: shortValue(value),
+      parentId,
+      parentLabel,
+    })
+
+    if (value && typeof value === 'object') {
+      if (Array.isArray(value)) {
+        value.slice(0, 12).forEach((entry, index) => {
+          visit(entry, `[${index}]`, depth + 1, keyPath, label, `${keyPath}.${index}`)
+        })
+        return
+      }
+
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, 16)
+        .forEach(([entryKey, entryValue]) => {
+          visit(entryValue, entryKey, depth + 1, keyPath, label, `${keyPath}.${entryKey}`)
+        })
+    }
+  }
+
+  visit(parsed, 'root', 0, null, '-', 'root')
+  return nodes
+})
+
+const selectedBrainstormPath = ref<string[]>([])
+
+const apiResponseBrainstormLevels = computed(() => {
+  const nodes = apiResponseBrainstorm.value
+  if (nodes.length === 0) return []
+
+  const nodesByDepth = new Map<number, BrainstormNode[]>()
+  nodes.forEach((node) => {
+    const current = nodesByDepth.get(node.depth) ?? []
+    current.push(node)
+    nodesByDepth.set(node.depth, current)
+  })
+
+  const levels: Array<{ depth: number; selectedId: string; nodes: BrainstormNode[] }> = []
+  const rootNodes = nodesByDepth.get(0) ?? []
+  if (rootNodes.length === 0) return []
+
+  let selectedId = rootNodes.some((node) => node.id === selectedBrainstormPath.value[0])
+    ? selectedBrainstormPath.value[0]
+    : rootNodes[0].id
+  levels.push({ depth: 0, selectedId, nodes: rootNodes })
+
+  const maxDepth = Math.max(...nodes.map((node) => node.depth))
+  for (let depth = 1; depth <= maxDepth; depth += 1) {
+    const depthNodes = (nodesByDepth.get(depth) ?? []).filter((node) => node.parentId === selectedId)
+    if (depthNodes.length === 0) break
+
+    selectedId = depthNodes.some((node) => node.id === selectedBrainstormPath.value[depth])
+      ? selectedBrainstormPath.value[depth]
+      : depthNodes[0].id
+
+    levels.push({ depth, selectedId, nodes: depthNodes })
+  }
+
+  return levels
+})
+
+function selectBrainstormNode(depth: number, nodeId: string) {
+  selectedBrainstormPath.value = [...selectedBrainstormPath.value.slice(0, depth), nodeId]
+}
 
 function parseItems(text: string) {
   return text
@@ -538,6 +671,21 @@ function closeStoreApiModal() {
   resetStoreApiForm()
 }
 
+function openStoreApiTestModal() {
+  storeApiTestForm.route = ''
+  storeApiTestForm.method = 'GET'
+  storeApiTestForm.body = ''
+  storeApiTestResult.value = null
+  storeApiTestError.value = ''
+  storeApiResponseView.value = 'raw'
+  selectedBrainstormPath.value = []
+  showStoreApiTestModal.value = true
+}
+
+function closeStoreApiTestModal() {
+  showStoreApiTestModal.value = false
+}
+
 async function saveStoreApi() {
   storeApiSaving.value = true
 
@@ -592,6 +740,73 @@ async function saveStoreBearerApiKey() {
     setStatus('Store Bearer API key saved.')
   } finally {
     storeBearerSaving.value = false
+  }
+}
+
+async function runStoreApiTest() {
+  storeApiTestLoading.value = true
+  storeApiTestError.value = ''
+  storeApiTestResult.value = null
+  selectedBrainstormPath.value = []
+
+  try {
+    const method = storeApiTestForm.method.trim().toUpperCase()
+    const route = storeApiTestForm.route.trim()
+
+    if (!route) {
+      storeApiTestError.value = 'Route is required.'
+      return
+    }
+
+    const headers: Record<string, string> = {
+      Accept: 'application/json, text/plain, */*',
+    }
+
+    if (storeBearerApiKey.value.trim()) {
+      headers.Authorization = `Bearer ${storeBearerApiKey.value.trim()}`
+    }
+
+    const init: RequestInit = {
+      method,
+      headers,
+    }
+
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && storeApiTestForm.body.trim()) {
+      headers['Content-Type'] = 'application/json'
+      init.body = storeApiTestForm.body
+    }
+
+    const startedAt = performance.now()
+    const response = await fetch(route, init)
+    const durationMs = Math.round(performance.now() - startedAt)
+
+    const responseHeaders: Record<string, string> = {}
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value
+    })
+
+    const rawBody = await response.text()
+    let normalizedBody = rawBody
+
+    try {
+      const parsed = JSON.parse(rawBody)
+      normalizedBody = JSON.stringify(parsed, null, 2)
+    } catch {
+      // Keep raw text response
+    }
+
+    storeApiTestResult.value = {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      durationMs,
+      headers: responseHeaders,
+      body: normalizedBody || '(empty response)',
+    }
+  } catch (error) {
+    storeApiTestError.value = error instanceof Error ? error.message : 'Request failed.'
+  } finally {
+    storeApiTestLoading.value = false
   }
 }
 
@@ -1086,7 +1301,10 @@ onBeforeUnmount(() => {
                     <span class="material-symbols-outlined text-primary">api</span>
                     Manage Store APIs
                   </h2>
-                  <Button class="btn-primary !px-6 !py-3" label="Add API Action" @click="openAddStoreApiModal" />
+                  <div class="flex flex-wrap gap-3">
+                    <Button class="btn-secondary !px-6 !py-3" label="Test API" @click="openStoreApiTestModal" />
+                    <Button class="btn-primary !px-6 !py-3" label="Add API Action" @click="openAddStoreApiModal" />
+                  </div>
                 </div>
 
                 <p class="mb-4 text-sm text-text-muted dark:text-slate-400">
@@ -1147,7 +1365,7 @@ onBeforeUnmount(() => {
                       <div class="space-y-3">
                         <div
                           v-for="api in group.actions"
-                          :key="api.id ?? `${api.route}-${api.action}-${api.method}`"
+                          :key="api.id ?? `${api.route}-${api.action}`"
                           class="rounded-lg border border-border-light p-3 dark:border-border-dark"
                         >
                           <div class="mb-2 flex flex-wrap items-center gap-2">
@@ -1271,6 +1489,168 @@ onBeforeUnmount(() => {
             <Button type="button" class="btn-secondary !px-6 !py-3" label="Cancel" @click="closeStoreApiModal" />
           </div>
         </form>
+      </Dialog>
+
+      <Dialog
+        v-model:visible="showStoreApiTestModal"
+        modal
+        class="dashboard-dialog"
+        :draggable="false"
+        :dismissableMask="true"
+        header="Test Store API"
+        :style="{ width: 'min(860px, 96vw)' }"
+      >
+        <form class="space-y-4" @submit.prevent="runStoreApiTest">
+          <div class="grid gap-4 md:grid-cols-[170px_1fr]">
+            <div class="space-y-2 dashboard-field">
+              <span class="metric-label">Method</span>
+              <Dropdown
+                v-model="storeApiTestForm.method"
+                :options="storeApiMethodOptions"
+                appendTo="body"
+                :autoZIndex="true"
+                :baseZIndex="3000"
+                class="w-full dashboard-input dashboard-select"
+                placeholder="Method"
+              />
+            </div>
+            <div class="space-y-2 dashboard-field">
+              <span class="metric-label">Route URL</span>
+              <div class="field-input-wrap">
+                <span class="material-symbols-outlined field-icon">route</span>
+                <InputText
+                  v-model="storeApiTestForm.route"
+                  class="w-full dashboard-input with-icon"
+                  placeholder="https://api.example.com/v1/products or /api/products"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-2 dashboard-field">
+            <span class="metric-label">Request Body (JSON, optional)</span>
+            <div class="field-input-wrap">
+              <span class="material-symbols-outlined field-icon textarea-icon">data_object</span>
+              <Textarea
+                v-model="storeApiTestForm.body"
+                class="w-full dashboard-input with-icon-textarea"
+                rows="5"
+                placeholder='{"name":"Sample Product"}'
+              />
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-3">
+            <Button
+              type="submit"
+              class="btn-primary !px-6 !py-3"
+              :label="storeApiTestLoading ? 'Testing...' : 'Run Test'"
+              :disabled="storeApiTestLoading"
+            />
+            <Button type="button" class="btn-secondary !px-6 !py-3" label="Close" @click="closeStoreApiTestModal" />
+          </div>
+        </form>
+
+        <Message
+          v-if="storeApiTestError"
+          severity="error"
+          :closable="false"
+          class="mt-4"
+        >
+          {{ storeApiTestError }}
+        </Message>
+
+        <div v-if="storeApiTestResult" class="mt-5 space-y-3">
+          <div class="grid gap-3 sm:grid-cols-3">
+            <article class="rounded-lg border border-border-light bg-white px-4 py-3 dark:border-border-dark dark:bg-background-dark">
+              <p class="metric-label">Status</p>
+              <p class="mt-1 text-sm font-bold" :class="storeApiTestResult.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
+                {{ storeApiTestResult.status }} {{ storeApiTestResult.statusText }}
+              </p>
+            </article>
+            <article class="rounded-lg border border-border-light bg-white px-4 py-3 dark:border-border-dark dark:bg-background-dark">
+              <p class="metric-label">Duration</p>
+              <p class="mt-1 text-sm font-bold text-text-main dark:text-white">{{ storeApiTestResult.durationMs }} ms</p>
+            </article>
+            <article class="rounded-lg border border-border-light bg-white px-4 py-3 dark:border-border-dark dark:bg-background-dark">
+              <p class="metric-label">Headers</p>
+              <p class="mt-1 text-sm font-bold text-text-main dark:text-white">{{ Object.keys(storeApiTestResult.headers).length }}</p>
+            </article>
+          </div>
+
+          <div class="space-y-2">
+            <p class="metric-label">Response Headers</p>
+            <pre class="api-test-result-block">{{ JSON.stringify(storeApiTestResult.headers, null, 2) }}</pre>
+          </div>
+
+          <div class="space-y-2">
+            <p class="metric-label">Response Body</p>
+            <div class="flex items-center gap-2">
+              <Button
+                type="button"
+                size="small"
+                class="!px-3 !py-2"
+                :severity="storeApiResponseView === 'raw' ? 'info' : 'secondary'"
+                outlined
+                @click="storeApiResponseView = 'raw'"
+              >
+                <span class="inline-flex items-center gap-1">
+                  <span class="material-symbols-outlined text-base">data_object</span>
+                  <span>Raw JSON</span>
+                </span>
+              </Button>
+              <Button
+                type="button"
+                size="small"
+                class="!px-3 !py-2"
+                :severity="storeApiResponseView === 'graph' ? 'info' : 'secondary'"
+                outlined
+                @click="storeApiResponseView = 'graph'"
+              >
+                <span class="inline-flex items-center gap-1">
+                  <span class="material-symbols-outlined text-base">account_tree</span>
+                  <span>Brainstorm Graph</span>
+                </span>
+              </Button>
+            </div>
+
+            <pre v-if="storeApiResponseView === 'raw'" class="api-test-result-block">{{ storeApiTestResult.body }}</pre>
+
+            <div v-else class="api-graph-wrap">
+              <p
+                v-if="apiResponseBrainstormLevels.length === 0"
+                class="rounded-lg border border-border-light bg-white px-3 py-2 text-xs text-text-muted dark:border-border-dark dark:bg-background-dark dark:text-slate-300"
+              >
+                Graph view is available for valid JSON responses.
+              </p>
+              <div v-else class="api-graph-board">
+                <section
+                  v-for="(level, levelIndex) in apiResponseBrainstormLevels"
+                  :key="`level-${levelIndex}`"
+                  class="api-graph-level"
+                >
+                  <p class="api-graph-level-title">Level {{ levelIndex }}</p>
+                  <article
+                    v-for="node in level.nodes"
+                    :key="node.id"
+                    class="api-graph-node"
+                    :class="{ 'is-selected': level.selectedId === node.id }"
+                    role="button"
+                    tabindex="0"
+                    @click="selectBrainstormNode(levelIndex, node.id)"
+                    @keydown.enter.prevent="selectBrainstormNode(levelIndex, node.id)"
+                    @keydown.space.prevent="selectBrainstormNode(levelIndex, node.id)"
+                  >
+                    <p class="api-graph-node-label">{{ node.label }}</p>
+                    <p class="api-graph-node-value">{{ node.value }}</p>
+                    <p v-if="levelIndex > 0" class="api-graph-node-parent">from: {{ node.parentLabel }}</p>
+                  </article>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
       </Dialog>
 
       <Dialog
@@ -1734,6 +2114,94 @@ onBeforeUnmount(() => {
   display: block;
 }
 
+:global(.dashboard-dialog .api-test-result-block) {
+  background: rgb(248 250 252);
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.65rem;
+  color: rgb(15 23 42);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+:global(.dashboard-dialog .api-graph-wrap) {
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+}
+
+:global(.dashboard-dialog .api-graph-board) {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+:global(.dashboard-dialog .api-graph-level) {
+  background: rgb(248 250 252);
+  border: 1px dashed rgb(203 213 225);
+  border-radius: 0.65rem;
+  padding: 0.55rem;
+}
+
+:global(.dashboard-dialog .api-graph-level-title) {
+  color: rgb(100 116 139);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.45rem;
+  text-transform: uppercase;
+}
+
+:global(.dashboard-dialog .api-graph-node) {
+  background: rgb(255 255 255);
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  margin-bottom: 0.45rem;
+  padding: 0.45rem 0.5rem;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+:global(.dashboard-dialog .api-graph-node:last-child) {
+  margin-bottom: 0;
+}
+
+:global(.dashboard-dialog .api-graph-node:hover) {
+  border-color: rgb(0 225 255);
+  transform: translateY(-1px);
+}
+
+:global(.dashboard-dialog .api-graph-node.is-selected) {
+  background: rgba(0, 225, 255, 0.1);
+  border-color: rgb(6 182 212);
+}
+
+:global(.dashboard-dialog .api-graph-node-label) {
+  color: rgb(15 23 42);
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin: 0;
+  word-break: break-word;
+}
+
+:global(.dashboard-dialog .api-graph-node-value) {
+  color: rgb(71 85 105);
+  font-size: 0.72rem;
+  margin: 0.18rem 0 0;
+  word-break: break-word;
+}
+
+:global(.dashboard-dialog .api-graph-node-parent) {
+  color: rgb(100 116 139);
+  font-size: 0.68rem;
+  margin: 0.18rem 0 0;
+}
+
 :global(.analytics-top-pages.p-datatable .p-datatable-thead > tr > th) {
   background: rgba(248, 250, 252, 0.85);
   border-color: rgb(226 232 240);
@@ -1936,6 +2404,51 @@ onBeforeUnmount(() => {
 
 :global(html.dark .dashboard-dialog .field-icon) {
   color: rgb(148 163 184);
+}
+
+:global(html.dark .dashboard-dialog .api-test-result-block) {
+  background: rgb(2 6 23);
+  border-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+
+:global(html.dark .dashboard-dialog .api-graph-wrap) {
+  border-color: rgb(51 65 85);
+}
+
+:global(html.dark .dashboard-dialog .api-graph-level) {
+  background: rgb(2 6 23);
+  border-color: rgb(71 85 105);
+}
+
+:global(html.dark .dashboard-dialog .api-graph-level-title) {
+  color: rgb(148 163 184);
+}
+
+:global(html.dark .dashboard-dialog .api-graph-node) {
+  background: rgb(15 23 42);
+  border-color: rgb(51 65 85);
+}
+
+:global(html.dark .dashboard-dialog .api-graph-node:hover) {
+  border-color: rgb(34 211 238);
+}
+
+:global(html.dark .dashboard-dialog .api-graph-node.is-selected) {
+  background: rgba(34, 211, 238, 0.14);
+  border-color: rgb(34 211 238);
+}
+
+:global(html.dark .dashboard-dialog .api-graph-node-label) {
+  color: rgb(241 245 249);
+}
+
+:global(html.dark .dashboard-dialog .api-graph-node-value) {
+  color: rgb(148 163 184);
+}
+
+:global(html.dark .dashboard-dialog .api-graph-node-parent) {
+  color: rgb(100 116 139);
 }
 
 :global(html.dark .analytics-top-pages.p-datatable .p-datatable-thead > tr > th) {
