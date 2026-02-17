@@ -10,6 +10,8 @@ import Dropdown from 'primevue/dropdown'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import MultiSelect from 'primevue/multiselect'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 import TabPanel from 'primevue/tabpanel'
 import TabView from 'primevue/tabview'
 import Textarea from 'primevue/textarea'
@@ -87,6 +89,7 @@ const analyticsLoading = ref(true)
 const analyticsError = ref('')
 const totalPageViews = ref(0)
 const uniqueVisitors = ref(0)
+const visitorLastSeenAt = ref<number[]>([])
 const lastVisitedPath = ref('/')
 const lastVisitedAt = ref<number | null>(null)
 const pathViews = ref<Record<string, number>>({})
@@ -170,6 +173,85 @@ const groupedStoreApis = computed(() => {
     }))
     .sort((a, b) => a.route.localeCompare(b.route))
 })
+
+const topPagesPiePalette = ['#00e1ff', '#06b6d4', '#22d3ee', '#38bdf8', '#0ea5e9']
+
+const topPagesPieSlices = computed(() => {
+  const total = topPages.value.reduce((sum, item) => sum + item.views, 0)
+  let start = 0
+
+  return topPages.value.map((item, index) => {
+    const ratio = total > 0 ? item.views / total : 0
+    const sweep = ratio * 360
+    const end = start + sweep
+    const slice = {
+      ...item,
+      color: topPagesPiePalette[index % topPagesPiePalette.length],
+      start,
+      end,
+      percentage: ratio * 100,
+    }
+    start = end
+    return slice
+  })
+})
+
+const topPagesPieStyle = computed(() => {
+  if (topPagesPieSlices.value.length === 0) {
+    return { background: 'conic-gradient(#e2e8f0 0deg 360deg)' }
+  }
+
+  const gradient = topPagesPieSlices.value
+    .map((slice) => `${slice.color} ${slice.start}deg ${slice.end}deg`)
+    .join(', ')
+
+  return {
+    background: `conic-gradient(${gradient})`,
+  }
+})
+
+const weeklyUniqueVisitors = computed(() => {
+  const order = [1, 2, 3, 4, 5, 6, 0] // Mon ... Sun
+  const labels = {
+    0: 'Sun',
+    1: 'Mon',
+    2: 'Tue',
+    3: 'Wed',
+    4: 'Thu',
+    5: 'Fri',
+    6: 'Sat',
+  } as const
+
+  const now = new Date()
+  const day = now.getDay()
+  const diffToMonday = day === 0 ? 6 : day - 1
+  const weekStart = new Date(now)
+  weekStart.setHours(0, 0, 0, 0)
+  weekStart.setDate(now.getDate() - diffToMonday)
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 7)
+
+  const counts = new Map<number, number>(order.map((weekday) => [weekday, 0]))
+  visitorLastSeenAt.value.forEach((timestamp) => {
+    const date = new Date(timestamp)
+    if (date >= weekStart && date < weekEnd) {
+      const weekday = date.getDay()
+      counts.set(weekday, (counts.get(weekday) ?? 0) + 1)
+    }
+  })
+
+  return order.map((weekday) => ({
+    day: weekday,
+    label: labels[weekday as keyof typeof labels],
+    count: counts.get(weekday) ?? 0,
+  }))
+})
+
+const weeklyUniqueVisitorsMax = computed(() =>
+  weeklyUniqueVisitors.value.length > 0
+    ? Math.max(...weeklyUniqueVisitors.value.map((item) => item.count), 1)
+    : 1,
+)
 
 function parseItems(text: string) {
   return text
@@ -549,11 +631,19 @@ onMounted(() => {
       analyticsError.value = ''
       if (!snapshot.exists()) {
         uniqueVisitors.value = 0
+        visitorLastSeenAt.value = []
         return
       }
 
       const visitors = snapshot.val() as Record<string, unknown>
       uniqueVisitors.value = Object.keys(visitors).length
+      visitorLastSeenAt.value = Object.values(visitors)
+        .map((value) => {
+          if (!value || typeof value !== 'object') return 0
+          const row = value as Record<string, unknown>
+          return Number(row.lastSeenAt ?? 0)
+        })
+        .filter((value) => Number.isFinite(value) && value > 0)
     },
     (error) => {
       analyticsError.value = 'Analytics data is unavailable right now.'
@@ -689,46 +779,132 @@ onBeforeUnmount(() => {
                 <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <Card class="!rounded-xl !border !border-border-light !bg-white dark:!border-border-dark dark:!bg-surface-dark">
                     <template #content>
-                      <p class="metric-label">Total Page Views</p>
-                      <p class="mt-2 text-3xl font-black tracking-tight text-text-main dark:text-white">{{ totalPageViews }}</p>
+                      <div class="flex items-start gap-3">
+                        <div class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <span class="material-symbols-outlined text-[20px]">visibility</span>
+                        </div>
+                        <div>
+                          <p class="metric-label">Total Page Views</p>
+                          <p class="mt-2 text-3xl font-black tracking-tight text-text-main dark:text-white">{{ totalPageViews }}</p>
+                        </div>
+                      </div>
                     </template>
                   </Card>
                   <Card class="!rounded-xl !border !border-border-light !bg-white dark:!border-border-dark dark:!bg-surface-dark">
                     <template #content>
-                      <p class="metric-label">Unique Visitors</p>
-                      <p class="mt-2 text-3xl font-black tracking-tight text-text-main dark:text-white">{{ uniqueVisitors }}</p>
+                      <div class="flex items-start gap-3">
+                        <div class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <span class="material-symbols-outlined text-[20px]">groups</span>
+                        </div>
+                        <div>
+                          <p class="metric-label">Unique Visitors</p>
+                          <p class="mt-2 text-3xl font-black tracking-tight text-text-main dark:text-white">{{ uniqueVisitors }}</p>
+                        </div>
+                      </div>
                     </template>
                   </Card>
                   <Card class="!rounded-xl !border !border-border-light !bg-white dark:!border-border-dark dark:!bg-surface-dark">
                     <template #content>
-                      <p class="metric-label">Tracked Pages</p>
-                      <p class="mt-2 text-3xl font-black tracking-tight text-text-main dark:text-white">{{ trackedPageCount }}</p>
+                      <div class="flex items-start gap-3">
+                        <div class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <span class="material-symbols-outlined text-[20px]">web</span>
+                        </div>
+                        <div>
+                          <p class="metric-label">Tracked Pages</p>
+                          <p class="mt-2 text-3xl font-black tracking-tight text-text-main dark:text-white">{{ trackedPageCount }}</p>
+                        </div>
+                      </div>
                     </template>
                   </Card>
                   <Card class="!rounded-xl !border !border-border-light !bg-white dark:!border-border-dark dark:!bg-surface-dark">
                     <template #content>
-                      <p class="metric-label">Last Visit</p>
-                      <p class="mt-2 text-sm font-semibold text-text-main dark:text-white">{{ formattedLastVisit }}</p>
-                      <p class="mt-1 text-xs text-text-muted dark:text-slate-400">{{ lastVisitedPath }}</p>
+                      <div class="flex items-start gap-3">
+                        <div class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <span class="material-symbols-outlined text-[20px]">schedule</span>
+                        </div>
+                        <div>
+                          <p class="metric-label">Last Visit</p>
+                          <p class="mt-2 text-sm font-semibold text-text-main dark:text-white">{{ formattedLastVisit }}</p>
+                          <p class="mt-1 text-xs text-text-muted dark:text-slate-400">{{ lastVisitedPath }}</p>
+                        </div>
+                      </div>
                     </template>
                   </Card>
                 </div>
 
                 <div class="space-y-3">
+                  <h3 class="dashboard-sub-title text-sm font-bold uppercase tracking-wider text-text-main dark:text-white">Charts Overview</h3>
+                  <p v-if="topPages.length === 0" class="text-sm text-text-muted dark:text-slate-400">No page views tracked yet.</p>
+                  <div v-else class="analytics-dual-charts">
+                    <article class="analytics-chart-card">
+                      <p class="analytics-chart-title">Top Pages (Doughnut)</p>
+                      <div class="analytics-pie-chart">
+                        <div class="analytics-doughnut-wrap">
+                          <div class="analytics-pie-circle" :style="topPagesPieStyle" />
+                          <div class="analytics-doughnut-center">
+                            <p class="analytics-doughnut-value">{{ topPages.length }}</p>
+                            <p class="analytics-doughnut-label">Pages</p>
+                          </div>
+                        </div>
+                        <div class="analytics-pie-legend">
+                          <article
+                            v-for="slice in topPagesPieSlices"
+                            :key="`pie-${slice.path}`"
+                            class="analytics-pie-legend-item"
+                          >
+                            <span class="analytics-pie-dot" :style="{ backgroundColor: slice.color }" />
+                            <p class="analytics-pie-path" :title="slice.path">{{ slice.path }}</p>
+                            <p class="analytics-pie-meta">{{ slice.views }} ({{ slice.percentage.toFixed(1) }}%)</p>
+                          </article>
+                        </div>
+                      </div>
+                    </article>
+
+                    <article class="analytics-chart-card">
+                      <p class="analytics-chart-title">Weekly Unique Visitors (Weekdays)</p>
+                      <div class="analytics-weekly-chart">
+                      <article
+                        v-for="item in weeklyUniqueVisitors"
+                        :key="`weekly-${item.label}`"
+                        class="analytics-weekday-item"
+                      >
+                        <div
+                          class="analytics-weekday-bar"
+                          :style="{ height: `${Math.max((item.count / weeklyUniqueVisitorsMax) * 160, 8)}px` }"
+                          :title="`${item.label}: ${item.count}`"
+                        />
+                        <p class="analytics-weekday-value">{{ item.count }}</p>
+                        <p class="analytics-weekday-label">{{ item.label }}</p>
+                      </article>
+                    </div>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="space-y-3">
                   <h3 class="dashboard-sub-title text-sm font-bold uppercase tracking-wider text-text-main dark:text-white">Top Pages</h3>
                   <p v-if="topPages.length === 0" class="text-sm text-text-muted dark:text-slate-400">No page views tracked yet.</p>
-                  <Card
-                    v-for="item in topPages"
-                    :key="item.path"
-                    class="!rounded-xl !border !border-border-light !bg-white dark:!border-border-dark dark:!bg-surface-dark"
+                  <DataTable
+                    v-else
+                    :value="topPages"
+                    responsiveLayout="scroll"
+                    stripedRows
+                    class="analytics-top-pages"
                   >
-                    <template #content>
-                      <div class="flex items-center justify-between text-sm">
-                        <p class="font-semibold text-text-main dark:text-white">{{ item.path }}</p>
-                        <p class="text-text-muted dark:text-slate-400">{{ item.views }} views</p>
-                      </div>
-                    </template>
-                  </Card>
+                    <Column field="path" header="Page">
+                      <template #body="slotProps">
+                        <span class="inline-flex items-center gap-2 font-semibold text-text-main dark:text-white">
+                          <span class="material-symbols-outlined text-base text-primary">description</span>
+                          <span>{{ slotProps.data.path }}</span>
+                        </span>
+                      </template>
+                    </Column>
+                    <Column field="views" header="Views">
+                      <template #body="slotProps">
+                        <span class="text-text-muted dark:text-slate-300">{{ slotProps.data.views }}</span>
+                      </template>
+                    </Column>
+                  </DataTable>
                 </div>
               </div>
             </template>
@@ -1386,6 +1562,160 @@ onBeforeUnmount(() => {
   letter-spacing: 0.08em;
 }
 
+:global(.analytics-pie-chart) {
+  align-items: center;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 210px minmax(0, 1fr);
+  padding: 0.25rem;
+}
+
+:global(.analytics-dual-charts) {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+@media (min-width: 1024px) {
+  :global(.analytics-dual-charts) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+:global(.analytics-chart-card) {
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.75rem;
+  padding: 0.9rem;
+}
+
+:global(.analytics-chart-title) {
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.75rem;
+  text-transform: uppercase;
+}
+
+:global(.analytics-pie-circle) {
+  border-radius: 9999px;
+  flex: 0 0 auto;
+  height: 210px;
+  width: 210px;
+}
+
+:global(.analytics-doughnut-wrap) {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  position: relative;
+}
+
+:global(.analytics-doughnut-center) {
+  align-items: center;
+  background: rgb(255 255 255);
+  border-radius: 9999px;
+  display: flex;
+  flex-direction: column;
+  height: 118px;
+  justify-content: center;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 118px;
+}
+
+:global(.analytics-doughnut-value) {
+  color: rgb(15 23 42);
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1;
+  margin: 0;
+}
+
+:global(.analytics-doughnut-label) {
+  color: rgb(100 116 139);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  margin: 0.2rem 0 0;
+  text-transform: uppercase;
+}
+
+:global(.analytics-pie-legend) {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+:global(.analytics-pie-legend-item) {
+  align-items: center;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: auto 1fr auto;
+  padding: 0.15rem 0;
+}
+
+:global(.analytics-pie-dot) {
+  border-radius: 9999px;
+  display: inline-block;
+  height: 0.62rem;
+  width: 0.62rem;
+}
+
+:global(.analytics-pie-path) {
+  color: rgb(15 23 42);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.analytics-pie-meta) {
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+  margin: 0;
+  white-space: nowrap;
+}
+
+:global(.analytics-weekly-chart) {
+  align-items: end;
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  min-height: 220px;
+}
+
+:global(.analytics-weekday-item) {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  justify-content: end;
+}
+
+:global(.analytics-weekday-bar) {
+  background: linear-gradient(180deg, rgba(0, 225, 255, 0.95) 0%, rgba(34, 211, 238, 0.55) 100%);
+  border-radius: 0.45rem 0.45rem 0.3rem 0.3rem;
+  transition: height 0.35s ease;
+  width: 100%;
+}
+
+:global(.analytics-weekday-value) {
+  color: rgb(15 23 42);
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+:global(.analytics-weekday-label) {
+  color: rgb(100 116 139);
+  font-size: 0.72rem;
+  margin: 0;
+}
+
 :global(.theme-toggle-btn.p-button) {
   align-items: center;
   display: inline-flex;
@@ -1402,6 +1732,39 @@ onBeforeUnmount(() => {
 
 :global(.dashboard-dialog .dashboard-field) {
   display: block;
+}
+
+:global(.analytics-top-pages.p-datatable .p-datatable-thead > tr > th) {
+  background: rgba(248, 250, 252, 0.85);
+  border-color: rgb(226 232 240);
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 0.85rem 1rem;
+  text-transform: uppercase;
+}
+
+:global(.analytics-top-pages.p-datatable .p-datatable-wrapper) {
+  background: rgb(255 255 255);
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+:global(.analytics-top-pages.p-datatable .p-datatable-table) {
+  width: 100%;
+}
+
+:global(.analytics-top-pages.p-datatable .p-datatable-tbody > tr > td) {
+  background: rgb(255 255 255);
+  border-color: rgb(226 232 240);
+  color: rgb(15 23 42);
+  padding: 0.9rem 1rem;
+}
+
+:global(.analytics-top-pages.p-datatable.p-datatable-striped .p-datatable-tbody > tr:nth-child(even) > td) {
+  background: rgb(248 250 252);
 }
 
 :global(.dashboard-dialog .field-input-wrap) {
@@ -1458,6 +1821,46 @@ onBeforeUnmount(() => {
 :global(html.dark) .dashboard-tabs :deep(.p-tabview-nav li:not(.p-highlight) .p-tabview-nav-link:hover) {
   background: rgba(15, 23, 42, 0.6);
   color: rgb(255 255 255);
+}
+
+:global(html.dark .analytics-pie-chart) {
+  background: transparent;
+}
+
+:global(html.dark .analytics-chart-card) {
+  border-color: rgb(51 65 85);
+}
+
+:global(html.dark .analytics-chart-title) {
+  color: rgb(148 163 184);
+}
+
+:global(html.dark .analytics-doughnut-center) {
+  background: rgb(2 6 23);
+}
+
+:global(html.dark .analytics-doughnut-value) {
+  color: rgb(241 245 249);
+}
+
+:global(html.dark .analytics-doughnut-label) {
+  color: rgb(148 163 184);
+}
+
+:global(html.dark .analytics-pie-path) {
+  color: rgb(241 245 249);
+}
+
+:global(html.dark .analytics-pie-meta) {
+  color: rgb(148 163 184);
+}
+
+:global(html.dark .analytics-weekday-value) {
+  color: rgb(241 245 249);
+}
+
+:global(html.dark .analytics-weekday-label) {
+  color: rgb(148 163 184);
 }
 
 :global(.dashboard-dialog.p-dialog) {
@@ -1533,6 +1936,27 @@ onBeforeUnmount(() => {
 
 :global(html.dark .dashboard-dialog .field-icon) {
   color: rgb(148 163 184);
+}
+
+:global(html.dark .analytics-top-pages.p-datatable .p-datatable-thead > tr > th) {
+  background: rgba(2, 6, 23, 0.88);
+  border-color: rgb(51 65 85);
+  color: rgb(148 163 184);
+}
+
+:global(html.dark .analytics-top-pages.p-datatable .p-datatable-wrapper) {
+  background: rgb(2 6 23);
+  border-color: rgb(51 65 85);
+}
+
+:global(html.dark .analytics-top-pages.p-datatable .p-datatable-tbody > tr > td) {
+  background: rgb(2 6 23);
+  border-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+
+:global(html.dark .analytics-top-pages.p-datatable.p-datatable-striped .p-datatable-tbody > tr:nth-child(even) > td) {
+  background: rgb(15 23 42);
 }
 
 :global(html.dark .dashboard-dialog input.p-inputtext:enabled:focus),
