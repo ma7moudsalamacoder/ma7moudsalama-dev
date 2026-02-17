@@ -1,46 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
+import { usePortfolioData } from '@/composables/usePortfolioData'
+
 const MAX_MEDIA_ITEMS = 10
 
 type MediaVideo = {
-  platform: 'YouTube' | 'TikTok'
+  id?: string
+  platform: string
   title: string
   embedUrl: string
   videoUrl: string
   thumbnailUrl: string
 }
 
-const mediaVideos: MediaVideo[] = [
-  {
-    platform: 'YouTube',
-    title: 'API Architecture Deep Dive',
-    embedUrl: 'https://www.youtube.com/embed/ysz5S6PUM-U',
-    videoUrl: 'https://www.youtube.com/watch?v=ysz5S6PUM-U',
-    thumbnailUrl: 'https://img.youtube.com/vi/ysz5S6PUM-U/hqdefault.jpg',
-  },
-  {
-    platform: 'YouTube',
-    title: 'Modern Web Development Talk',
-    embedUrl: 'https://www.youtube.com/embed/jNQXAC9IVRw',
-    videoUrl: 'https://www.youtube.com/watch?v=jNQXAC9IVRw',
-    thumbnailUrl: 'https://img.youtube.com/vi/jNQXAC9IVRw/hqdefault.jpg',
-  },
-  {
-    platform: 'TikTok',
-    title: 'Backend Engineering Tips',
-    embedUrl: 'https://www.tiktok.com/embed/v2/7106818926616966446',
-    videoUrl: 'https://www.tiktok.com/@scout2015/video/7106818926616966446',
-    thumbnailUrl: 'https://placehold.co/1280x720/020617/00e1ff?text=TikTok+Video',
-  },
-  {
-    platform: 'TikTok',
-    title: 'Mobile App Development Snippet',
-    embedUrl: 'https://www.tiktok.com/embed/v2/7218552891404862766',
-    videoUrl: 'https://www.tiktok.com/@scout2015/video/7218552891404862766',
-    thumbnailUrl: 'https://placehold.co/1280x720/020617/00e1ff?text=TikTok+Video',
-  },
-].slice(0, MAX_MEDIA_ITEMS)
+const { mediaVideos: allMediaVideos } = usePortfolioData()
+const mediaVideos = computed(() => allMediaVideos.value.slice(0, MAX_MEDIA_ITEMS))
 
 const carouselRef = ref<HTMLElement | null>(null)
 const selectedVideo = ref<MediaVideo | null>(null)
@@ -121,10 +96,15 @@ function scrollCarousel(direction: 'left' | 'right') {
       >
         <article
           v-for="video in mediaVideos"
-          :key="video.title"
+          :key="video.id ?? video.title"
           class="project-card w-[72%] shrink-0 snap-start overflow-hidden sm:w-[24rem]"
         >
-          <button type="button" class="w-full text-left" :aria-label="`Open ${video.title}`" @click="openVideo(video)">
+          <button
+            type="button"
+            class="w-full text-left"
+            :aria-label="`Open ${video.title}`"
+            @click="openVideo(video)"
+          >
             <div class="relative">
               <img
                 :src="video.thumbnailUrl"

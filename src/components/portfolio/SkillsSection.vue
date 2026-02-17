@@ -1,51 +1,7 @@
 <script setup lang="ts">
-const skillGroups = [
-  {
-    title: 'Backend',
-    icon: 'terminal',
-    items: ['Laravel / PHP', 'Drupal / PHP', 'Node.js / Express', 'Python / Django'],
-  },
-  {
-    title: 'Frontend',
-    icon: 'layers',
-    items: ['Vue.js / Nuxt', 'Ant-Design', 'PrimeVue', 'Tailwind CSS'],
-  },
-  {
-    title: 'DevOps',
-    icon: 'cloud',
-    items: ['Docker / Kubernetes', 'CI/CD Pipelines', 'AWS / DigitalOcean', 'Linux / Nginx'],
-  },
-  {
-    title: 'Databases',
-    icon: 'database',
-    items: ['PostgreSQL / MySQL', 'Redis / Caching', 'MongoDB', 'SQLite'],
-  },
-  {
-    title: 'Backend Services',
-    icon: 'hub',
-    items: ['Firebase', 'Supabase', 'Appwrite', 'REST APIs / GraphQL'],
-  },
-  {
-    title: 'Testing & QA',
-    icon: 'fact_check',
-    items: ['Unit Testing', 'Integration Testing', 'API Testing (Postman)', 'Debugging & Performance'],
-  },
-  {
-    title: 'Architecture',
-    icon: 'account_tree',
-    items: [
-      'Clean Architecture',
-      'Microservices',
-      'Design Patterns',
-      'Scalable System Design',
-    ],
-  },
-  {
-    title: 'Mobile Apps',
-    icon: 'smartphone',
-    items: ['iOS / Swift', 'Android / Kotlin', 'Flutter / Dart', 'React Native / Expo'],
-  },
-]
+import { usePortfolioData } from '@/composables/usePortfolioData'
+
+const { skillGroups } = usePortfolioData()
 </script>
 
 <template>
@@ -59,7 +15,7 @@ const skillGroups = [
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <article
           v-for="(group, index) in skillGroups"
-          :key="group.title"
+          :key="group.id ?? group.title"
           v-reveal="index * 70"
           class="skill-card"
         >

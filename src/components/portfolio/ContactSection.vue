@@ -1,20 +1,36 @@
 <script setup lang="ts">
-const links = [
+import { computed } from 'vue'
+
+import { usePortfolioData } from '@/composables/usePortfolioData'
+
+const { contactDetails } = usePortfolioData()
+
+const links = computed(() => [
   {
     icon: 'mail',
     label: 'Email',
-    value: 'ma7moudsalamacoder',
-    href: 'mailto:ma7moudsalamacoder@gmail.com',
+    value: contactDetails.value.email,
+    href: contactDetails.value.emailUrl,
   },
   {
     icon: 'link',
     label: 'LinkedIn',
-    value: '/in/mahmoudkm-coder',
-    href: 'https://www.linkedin.com/in/mahmoudkm-coder',
+    value: contactDetails.value.linkedin,
+    href: contactDetails.value.linkedinUrl,
   },
-  { icon: 'code', label: 'GitHub', value: '@ma7moud-salama', href: '#' },
-  { icon: 'share', label: 'X / Twitter', value: '@msalama_dev', href: '#' },
-]
+  {
+    icon: 'code',
+    label: 'GitHub',
+    value: contactDetails.value.github,
+    href: contactDetails.value.githubUrl,
+  },
+  {
+    icon: 'share',
+    label: 'X / Twitter',
+    value: contactDetails.value.twitter,
+    href: contactDetails.value.twitterUrl,
+  },
+])
 </script>
 
 <template>

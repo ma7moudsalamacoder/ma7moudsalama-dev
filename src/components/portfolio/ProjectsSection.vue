@@ -1,16 +1,7 @@
 <script setup lang="ts">
-const projects = [
-  {
-    title: 'Omni-Channel API Gateway',
-    description: 'A high-throughput API gateway for banking microservices with OAuth2 and rate limiting.',
-    tags: ['Laravel', 'PostgreSQL'],
-  },
-  {
-    title: 'Real-time Analytics Engine',
-    description: 'Processes millions of websocket events per minute with low-latency storage and dynamic dashboards.',
-    tags: ['Node.js', 'React'],
-  },
-]
+import { usePortfolioData } from '@/composables/usePortfolioData'
+
+const { projects } = usePortfolioData()
 </script>
 
 <template>
@@ -29,7 +20,7 @@ const projects = [
       <div class="grid gap-8 md:grid-cols-2">
         <article
           v-for="(project, index) in projects"
-          :key="project.title"
+          :key="project.id ?? project.title"
           v-reveal="index * 110"
           class="project-card group"
         >
@@ -40,7 +31,12 @@ const projects = [
             </div>
             <h4 class="mb-2 text-2xl font-bold text-text-main dark:text-white">{{ project.title }}</h4>
             <p class="mb-6 text-text-muted dark:text-slate-500">{{ project.description }}</p>
-            <a class="inline-flex items-center gap-2 text-sm font-bold text-text-main dark:text-white transition-colors group-hover:text-primary" href="#">
+            <a
+              class="inline-flex items-center gap-2 text-sm font-bold text-text-main transition-colors group-hover:text-primary dark:text-white"
+              :href="project.link || '#'"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               VIEW CASE STUDY <span class="material-symbols-outlined text-base">arrow_forward</span>
             </a>
           </div>
