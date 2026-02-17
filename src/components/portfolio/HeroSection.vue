@@ -1,3 +1,58 @@
+<script setup lang="ts">
+import { animate, type AnimationPlaybackControls } from 'framer-motion/dom'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
+
+const roleLine = 'Software Developer | Systems Builder | Problem Solver'
+const typedRoleLine = ref('')
+let typeControl: AnimationPlaybackControls | null = null
+let deleteControl: AnimationPlaybackControls | null = null
+let phaseTimer: number | null = null
+
+function clearTypingState() {
+  if (phaseTimer !== null) {
+    window.clearTimeout(phaseTimer)
+    phaseTimer = null
+  }
+
+  typeControl?.stop()
+  deleteControl?.stop()
+}
+
+function runTypingCycle() {
+  clearTypingState()
+
+  typeControl = animate(0, roleLine.length, {
+    duration: 4.2,
+    ease: 'linear',
+    onUpdate: (latest) => {
+      typedRoleLine.value = roleLine.slice(0, Math.floor(latest))
+    },
+    onComplete: () => {
+      phaseTimer = window.setTimeout(() => {
+        deleteControl = animate(roleLine.length, 0, {
+          duration: 2.4,
+          ease: 'linear',
+          onUpdate: (latest) => {
+            typedRoleLine.value = roleLine.slice(0, Math.floor(latest))
+          },
+          onComplete: () => {
+            phaseTimer = window.setTimeout(runTypingCycle, 300)
+          },
+        })
+      }, 1400)
+    },
+  })
+}
+
+onMounted(() => {
+  runTypingCycle()
+})
+
+onBeforeUnmount(() => {
+  clearTypingState()
+})
+</script>
+
 <template>
   <section
     class="circuit-bg relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background-light pt-20 dark:bg-background-dark"
@@ -52,9 +107,8 @@
       <p
         class="mx-auto mb-4 max-w-3xl text-lg font-light leading-relaxed text-slate-600 dark:text-slate-400 md:text-2xl"
       >
-        Software Developer |
-        <span class="font-medium text-text-main dark:text-white">Systems Builder</span> | Problem
-        Solver
+        <span>{{ typedRoleLine }}</span>
+        <span class="ml-1 inline-block h-[1.1em] w-[2px] animate-pulse bg-primary align-middle" />
       </p>
 
       <p class="mx-auto mb-8 max-w-2xl text-base text-slate-600 dark:text-slate-500 md:text-lg">
