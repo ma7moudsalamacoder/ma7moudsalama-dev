@@ -64,7 +64,7 @@
             ".validate": "newData.isString() && newData.val().length > 0"
           },
           "methods": {
-            ".validate": "newData.hasChildren() && newData.numChildren() > 0",
+            ".validate": "newData.hasChildren(['0'])",
             "$methodIndex": {
               ".validate": "newData.isString()"
             }
