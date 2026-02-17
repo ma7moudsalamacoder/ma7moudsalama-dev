@@ -5,6 +5,78 @@
     "portfolio": {
       ".read": true,
       ".write": "auth != null"
+    },
+    "websiteAnalytics": {
+      ".read": true,
+      ".write": true,
+      "summary": {
+        "totalPageViews": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "lastVisitedAt": {
+          ".validate": "newData.isNumber() || !newData.exists()"
+        },
+        "lastVisitedPath": {
+          ".validate": "newData.isString() || !newData.exists()"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() || !newData.exists()"
+        },
+        "paths": {
+          "$pathKey": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          }
+        }
+      },
+      "visitors": {
+        "$visitorId": {
+          ".validate": "newData.hasChildren(['lastSeenAt', 'visitCount', 'lastPath']) || !newData.exists()",
+          "firstSeenAt": {
+            ".validate": "newData.isNumber() || !newData.exists()"
+          },
+          "lastSeenAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "visitCount": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "lastPath": {
+            ".validate": "newData.isString()"
+          }
+        }
+      }
+    },
+    "store": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "config": {
+        "bearerApiKey": {
+          ".validate": "newData.isString()"
+        }
+      },
+      "apis": {
+        "$apiId": {
+          ".validate": "newData.hasChildren(['category', 'route', 'methods', 'action', 'description']) || !newData.exists()",
+          "category": {
+            ".validate": "newData.isString()"
+          },
+          "route": {
+            ".validate": "newData.isString() && newData.val().length > 0"
+          },
+          "methods": {
+            ".validate": "newData.hasChildren() && newData.numChildren() > 0",
+            "$methodIndex": {
+              ".validate": "newData.isString()"
+            }
+          },
+          "action": {
+            ".validate": "newData.isString() && newData.val().length > 0"
+          },
+          "description": {
+            ".validate": "newData.isString()"
+          }
+        }
+      }
     }
   }
 }

@@ -40,7 +40,7 @@ const { isDark, toggleTheme } = useTheme()
         </button>
 
         <a
-          href="#contact"
+          href="/coming-soon"
           class="hidden h-11 items-center rounded-lg bg-primary px-6 text-sm font-bold uppercase tracking-wider text-background-dark shadow-[0_0_20px_rgba(0,225,255,0.2)] transition-all hover:brightness-110 sm:flex"
         >
           MS -Dev Store

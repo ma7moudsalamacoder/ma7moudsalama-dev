@@ -6,8 +6,10 @@ import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Dialog from 'primevue/dialog'
+import Dropdown from 'primevue/dropdown'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
+import MultiSelect from 'primevue/multiselect'
 import TabPanel from 'primevue/tabpanel'
 import TabView from 'primevue/tabview'
 import Textarea from 'primevue/textarea'
@@ -94,6 +96,40 @@ const showContactModal = ref(false)
 const showMediaModal = ref(false)
 const showSkillModal = ref(false)
 const showProjectModal = ref(false)
+const showStoreApiModal = ref(false)
+const storeApiSaving = ref(false)
+const storeApiLoading = ref(true)
+const storeBearerSaving = ref(false)
+const activeStoreApiId = ref<string | null>(null)
+const storeBearerApiKey = ref('')
+
+type StoreApiCategory = 'analytics' | 'users' | 'products' | 'payments'
+type StoreApiAction = {
+  id?: string
+  category: StoreApiCategory
+  route: string
+  methods: string[]
+  action: string
+  description: string
+}
+
+const storeApis = ref<StoreApiAction[]>([])
+const storeApiForm = reactive<StoreApiAction>({
+  category: 'analytics',
+  route: '',
+  methods: ['GET'],
+  action: '',
+  description: '',
+})
+
+const storeApiMethodOptions = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+
+const storeApiCategories: Array<{ key: StoreApiCategory; label: string; icon: string }> = [
+  { key: 'analytics', label: 'Analytics API', icon: 'query_stats' },
+  { key: 'users', label: 'Users APIs', icon: 'group' },
+  { key: 'products', label: 'Products APIs (services/apps)', icon: 'deployed_code' },
+  { key: 'payments', label: 'Payments APIs', icon: 'payments' },
+]
 
 const trackedPageCount = computed(() => Object.keys(pathViews.value).length)
 const formattedLastVisit = computed(() => {
@@ -116,6 +152,24 @@ const topPages = computed(() =>
     .sort((a, b) => b.views - a.views)
     .slice(0, 5),
 )
+
+const groupedStoreApis = computed(() => {
+  const grouped = new Map<string, StoreApiAction[]>()
+
+  storeApis.value.forEach((api) => {
+    const key = api.route.trim() || '/'
+    const current = grouped.get(key) ?? []
+    current.push(api)
+    grouped.set(key, current)
+  })
+
+  return Array.from(grouped.entries())
+    .map(([route, actions]) => ({
+      route,
+      actions: actions.sort((a, b) => a.action.localeCompare(b.action)),
+    }))
+    .sort((a, b) => a.route.localeCompare(b.route))
+})
 
 function parseItems(text: string) {
   return text
@@ -373,6 +427,92 @@ async function deleteProject(id?: string) {
   }
 }
 
+function resetStoreApiForm() {
+  activeStoreApiId.value = null
+  storeApiForm.category = 'analytics'
+  storeApiForm.route = ''
+  storeApiForm.methods = ['GET']
+  storeApiForm.action = ''
+  storeApiForm.description = ''
+}
+
+function openAddStoreApiModal() {
+  resetStoreApiForm()
+  showStoreApiModal.value = true
+}
+
+function openEditStoreApiModal(api: StoreApiAction) {
+  activeStoreApiId.value = api.id ?? null
+  storeApiForm.category = api.category
+  storeApiForm.route = api.route
+  storeApiForm.methods = [...api.methods]
+  storeApiForm.action = api.action
+  storeApiForm.description = api.description
+  showStoreApiModal.value = true
+}
+
+function closeStoreApiModal() {
+  showStoreApiModal.value = false
+  resetStoreApiForm()
+}
+
+async function saveStoreApi() {
+  storeApiSaving.value = true
+
+  try {
+    const normalizedMethods = Array.from(
+      new Set(storeApiForm.methods.map((method) => method.trim().toUpperCase()).filter(Boolean)),
+    )
+    const methods = normalizedMethods.length > 0 ? normalizedMethods : ['GET']
+
+    const payload = {
+      category: storeApiForm.category,
+      route: storeApiForm.route.trim(),
+      methods,
+      action: storeApiForm.action.trim(),
+      description: storeApiForm.description.trim(),
+    }
+
+    if (activeStoreApiId.value) {
+      await set(dbRef(database, `store/apis/${activeStoreApiId.value}`), payload)
+      setStatus('Store API action updated.')
+    } else {
+      const apiRef = push(dbRef(database, 'store/apis'))
+      await set(apiRef, payload)
+      setStatus('Store API action added.')
+    }
+
+    resetStoreApiForm()
+  } finally {
+    storeApiSaving.value = false
+  }
+}
+
+async function deleteStoreApi(id?: string) {
+  if (!id) return
+  await remove(dbRef(database, `store/apis/${id}`))
+  setStatus('Store API action removed.')
+
+  if (activeStoreApiId.value === id) {
+    closeStoreApiModal()
+  }
+}
+
+function getStoreApiCategoryLabel(key: StoreApiCategory) {
+  return storeApiCategories.find((entry) => entry.key === key)?.label ?? key
+}
+
+async function saveStoreBearerApiKey() {
+  storeBearerSaving.value = true
+
+  try {
+    await set(dbRef(database, 'store/config/bearerApiKey'), storeBearerApiKey.value.trim())
+    setStatus('Store Bearer API key saved.')
+  } finally {
+    storeBearerSaving.value = false
+  }
+}
+
 onMounted(() => {
   const unsubscribeSummary = onValue(
     dbRef(database, 'websiteAnalytics/summary'),
@@ -421,7 +561,59 @@ onMounted(() => {
     },
   )
 
-  analyticsUnsubscribes.push(unsubscribeSummary, unsubscribeVisitors)
+  const unsubscribeStoreApis = onValue(
+    dbRef(database, 'store/apis'),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        storeApis.value = []
+        storeApiLoading.value = false
+        return
+      }
+
+      const raw = snapshot.val() as Record<string, Record<string, unknown>>
+      storeApis.value = Object.entries(raw)
+        .map(([id, value]) => ({
+          id,
+          category: String(value.category ?? 'analytics') as StoreApiCategory,
+          route: String(value.route ?? ''),
+          methods: Array.isArray(value.methods)
+            ? value.methods.map((entry) => String(entry).toUpperCase()).filter(Boolean)
+            : [String(value.method ?? 'GET').toUpperCase()],
+          action: String(value.action ?? ''),
+          description: String(value.description ?? ''),
+        }))
+        .filter((entry) => entry.route && entry.action)
+
+      storeApiLoading.value = false
+    },
+    (error) => {
+      storeApiLoading.value = false
+      console.error('[dashboard] Failed to read store APIs.', error)
+    },
+  )
+
+  const unsubscribeStoreConfig = onValue(
+    dbRef(database, 'store/config'),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        storeBearerApiKey.value = ''
+        return
+      }
+
+      const raw = snapshot.val() as Record<string, unknown>
+      storeBearerApiKey.value = String(raw.bearerApiKey ?? '')
+    },
+    (error) => {
+      console.error('[dashboard] Failed to read store config.', error)
+    },
+  )
+
+  analyticsUnsubscribes.push(
+    unsubscribeSummary,
+    unsubscribeVisitors,
+    unsubscribeStoreApis,
+    unsubscribeStoreConfig,
+  )
 })
 
 onBeforeUnmount(() => {
@@ -693,7 +885,217 @@ onBeforeUnmount(() => {
             </Card>
           </section>
         </TabPanel>
+
+        <TabPanel>
+          <template #header>
+            <span class="tab-header">
+              <span class="material-symbols-outlined">storefront</span>
+              <span>Store</span>
+            </span>
+          </template>
+        </TabPanel>
+
+        <TabPanel>
+          <template #header>
+            <span class="tab-header">
+              <span class="material-symbols-outlined">settings</span>
+              <span>Settings</span>
+            </span>
+          </template>
+          <section class="grid gap-8">
+            <Card class="skill-card">
+              <template #content>
+                <div class="mb-5 flex flex-wrap items-center justify-between gap-4">
+                  <h2 class="dashboard-section-title flex items-center gap-2 text-2xl font-bold text-text-main dark:text-white">
+                    <span class="material-symbols-outlined text-primary">api</span>
+                    Manage Store APIs
+                  </h2>
+                  <Button class="btn-primary !px-6 !py-3" label="Add API Action" @click="openAddStoreApiModal" />
+                </div>
+
+                <p class="mb-4 text-sm text-text-muted dark:text-slate-400">
+                  Define API actions for each route. One route can have multiple actions and methods.
+                </p>
+                <Card class="mb-6 !rounded-xl !border !border-border-light !bg-white dark:!border-border-dark dark:!bg-surface-dark">
+                  <template #content>
+                    <p class="mb-2 text-sm font-semibold text-text-main dark:text-white">Shared Authorization (for all store APIs)</p>
+                    <p class="mb-3 text-xs text-text-muted dark:text-slate-400">
+                      Header: <code>Authorization: Bearer &lt;API_KEY&gt;</code>
+                    </p>
+                    <div class="flex flex-wrap gap-3">
+                      <div class="min-w-[260px] flex-1">
+                        <InputText v-model="storeBearerApiKey" class="w-full dashboard-input !h-12 !px-4 !py-3" placeholder="Enter shared Bearer API key" />
+                      </div>
+                      <Button
+                        class="btn-primary !px-6 !py-3"
+                        :label="storeBearerSaving ? 'Saving...' : 'Save API Key'"
+                        :disabled="storeBearerSaving"
+                        @click="saveStoreBearerApiKey"
+                      />
+                    </div>
+                  </template>
+                </Card>
+
+                <div class="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <Card
+                    v-for="category in storeApiCategories"
+                    :key="category.key"
+                    class="!rounded-xl !border !border-border-light !bg-white dark:!border-border-dark dark:!bg-surface-dark"
+                  >
+                    <template #content>
+                      <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary">{{ category.icon }}</span>
+                        <p class="text-sm font-semibold text-text-main dark:text-white">{{ category.label }}</p>
+                      </div>
+                    </template>
+                  </Card>
+                </div>
+
+                <p v-if="storeApiLoading" class="text-sm text-text-muted dark:text-slate-400">Loading store APIs...</p>
+                <p v-else-if="groupedStoreApis.length === 0" class="text-sm text-text-muted dark:text-slate-400">
+                  No API actions configured yet.
+                </p>
+
+                <div v-else class="space-y-4">
+                  <Card
+                    v-for="group in groupedStoreApis"
+                    :key="group.route"
+                    class="!rounded-xl !border !border-border-light !bg-white dark:!border-border-dark dark:!bg-surface-dark"
+                  >
+                    <template #content>
+                      <div class="mb-4 flex items-center justify-between gap-3">
+                        <p class="text-sm font-bold text-text-main dark:text-white">{{ group.route }}</p>
+                        <span class="chip !normal-case">{{ group.actions.length }} action(s)</span>
+                      </div>
+
+                      <div class="space-y-3">
+                        <div
+                          v-for="api in group.actions"
+                          :key="api.id ?? `${api.route}-${api.action}-${api.method}`"
+                          class="rounded-lg border border-border-light p-3 dark:border-border-dark"
+                        >
+                          <div class="mb-2 flex flex-wrap items-center gap-2">
+                            <span
+                              v-for="method in api.methods"
+                              :key="`${api.id ?? api.route}-${method}`"
+                              class="chip !normal-case"
+                            >
+                              {{ method }}
+                            </span>
+                            <span class="chip !normal-case !border-slate-300 !bg-slate-100 !text-slate-700 dark:!border-slate-600 dark:!bg-slate-800 dark:!text-slate-200">
+                              {{ getStoreApiCategoryLabel(api.category) }}
+                            </span>
+                            <p class="text-sm font-semibold text-text-main dark:text-white">{{ api.action }}</p>
+                          </div>
+                          <p class="mb-3 text-xs text-text-muted dark:text-slate-400">{{ api.description }}</p>
+
+                          <div class="flex gap-2">
+                            <Button class="chip !normal-case" label="Edit" @click="openEditStoreApiModal(api)" />
+                            <Button
+                              class="chip !normal-case !border-rose-300 !bg-rose-50 !text-rose-700"
+                              label="Delete"
+                              @click="deleteStoreApi(api.id)"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </Card>
+                </div>
+              </template>
+            </Card>
+          </section>
+        </TabPanel>
       </TabView>
+
+      <Dialog
+        v-model:visible="showStoreApiModal"
+        modal
+        class="dashboard-dialog"
+        :draggable="false"
+        :dismissableMask="true"
+        :header="activeStoreApiId ? 'Edit API Action' : 'Add API Action'"
+        :style="{ width: 'min(760px, 95vw)' }"
+      >
+        <form class="space-y-4" @submit.prevent="saveStoreApi">
+          <div class="space-y-2 dashboard-field">
+            <span class="metric-label">API Group</span>
+            <Dropdown
+              v-model="storeApiForm.category"
+              :options="storeApiCategories"
+              optionLabel="label"
+              optionValue="key"
+              appendTo="body"
+              :autoZIndex="true"
+              :baseZIndex="3000"
+              class="w-full dashboard-input dashboard-select"
+              placeholder="Select API Group"
+            >
+              <template #value="slotProps">
+                <div v-if="slotProps.value" class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-primary text-[18px]">
+                    {{ storeApiCategories.find((entry) => entry.key === slotProps.value)?.icon }}
+                  </span>
+                  <span>{{ storeApiCategories.find((entry) => entry.key === slotProps.value)?.label }}</span>
+                </div>
+                <span v-else class="text-text-muted dark:text-slate-400">{{ slotProps.placeholder }}</span>
+              </template>
+              <template #option="slotProps">
+                <div class="flex items-center gap-2">
+                  <span class="material-symbols-outlined text-primary text-[18px]">{{ slotProps.option.icon }}</span>
+                  <span>{{ slotProps.option.label }}</span>
+                </div>
+              </template>
+            </Dropdown>
+          </div>
+          <label class="space-y-2 dashboard-field">
+            <span class="metric-label">Route</span>
+            <div class="field-input-wrap">
+              <span class="material-symbols-outlined field-icon">route</span>
+              <InputText v-model="storeApiForm.route" class="w-full dashboard-input with-icon" required />
+            </div>
+          </label>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="space-y-2 dashboard-field">
+              <span class="metric-label">Methods</span>
+              <MultiSelect
+                v-model="storeApiForm.methods"
+                :options="storeApiMethodOptions"
+                appendTo="body"
+                :autoZIndex="true"
+                :baseZIndex="3000"
+                class="w-full dashboard-input dashboard-select"
+                display="chip"
+                :maxSelectedLabels="2"
+                placeholder="Select one or more methods"
+              />
+            </div>
+            <label class="space-y-2 dashboard-field">
+              <span class="metric-label">Action</span>
+              <div class="field-input-wrap">
+                <span class="material-symbols-outlined field-icon">bolt</span>
+                <InputText v-model="storeApiForm.action" class="w-full dashboard-input with-icon" required />
+              </div>
+            </label>
+          </div>
+          <label class="space-y-2 dashboard-field">
+            <span class="metric-label">Description</span>
+            <div class="field-input-wrap">
+              <span class="material-symbols-outlined field-icon textarea-icon">description</span>
+              <Textarea v-model="storeApiForm.description" class="w-full dashboard-input with-icon-textarea" rows="4" required />
+            </div>
+          </label>
+          <div class="flex gap-3">
+            <Button
+              type="submit"
+              class="btn-primary !px-6 !py-3"
+              :label="storeApiSaving ? 'Saving...' : activeStoreApiId ? 'Update API Action' : 'Add API Action'"
+              :disabled="storeApiSaving"
+            />
+            <Button type="button" class="btn-secondary !px-6 !py-3" label="Cancel" @click="closeStoreApiModal" />
+          </div>
+        </form>
+      </Dialog>
 
       <Dialog
         v-model:visible="showContactModal"
@@ -1009,6 +1411,7 @@ onBeforeUnmount(() => {
 :global(.dashboard-dialog .field-icon) {
   color: rgb(100 116 139);
   left: 0.75rem;
+  pointer-events: none;
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -1023,6 +1426,21 @@ onBeforeUnmount(() => {
 :global(.dashboard-dialog .dashboard-input.with-icon.p-inputtext) {
   min-height: 3rem;
   padding-left: 2.6rem;
+}
+
+:global(.dashboard-dialog .dashboard-input.dashboard-select.p-dropdown),
+:global(.dashboard-dialog .dashboard-input.dashboard-select.p-multiselect) {
+  min-height: 3rem;
+}
+
+:global(.dashboard-dialog .dashboard-input.with-icon.p-dropdown),
+:global(.dashboard-dialog .dashboard-input.with-icon.p-multiselect) {
+  min-height: 3rem;
+}
+
+:global(.dashboard-dialog .dashboard-input.with-icon.p-dropdown .p-dropdown-label),
+:global(.dashboard-dialog .dashboard-input.with-icon.p-multiselect .p-multiselect-label) {
+  padding-left: 2rem;
 }
 
 :global(.dashboard-dialog .dashboard-input.with-icon-textarea.p-inputtextarea) {
@@ -1068,8 +1486,10 @@ onBeforeUnmount(() => {
   padding: 1.1rem 1.25rem 1.25rem;
 }
 
-:global(.dashboard-dialog .p-inputtext),
-:global(.dashboard-dialog .p-inputtextarea) {
+:global(.dashboard-dialog input.p-inputtext),
+:global(.dashboard-dialog textarea.p-inputtextarea),
+:global(.dashboard-dialog .p-dropdown),
+:global(.dashboard-dialog .p-multiselect) {
   background: rgb(255 255 255);
   border: 1px solid rgb(203 213 225);
   border-radius: 0.65rem;
@@ -1077,8 +1497,10 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-:global(.dashboard-dialog .p-inputtext:enabled:focus),
-:global(.dashboard-dialog .p-inputtextarea:enabled:focus) {
+:global(.dashboard-dialog input.p-inputtext:enabled:focus),
+:global(.dashboard-dialog textarea.p-inputtextarea:enabled:focus),
+:global(.dashboard-dialog .p-dropdown:not(.p-disabled).p-focus),
+:global(.dashboard-dialog .p-multiselect:not(.p-disabled).p-focus) {
   border-color: rgb(0 225 255);
   box-shadow: 0 0 0 0.2rem rgba(0, 225, 255, 0.18);
 }
@@ -1100,8 +1522,10 @@ onBeforeUnmount(() => {
   color: rgb(248 250 252);
 }
 
-:global(html.dark .dashboard-dialog .p-inputtext),
-:global(html.dark .dashboard-dialog .p-inputtextarea) {
+:global(html.dark .dashboard-dialog input.p-inputtext),
+:global(html.dark .dashboard-dialog textarea.p-inputtextarea),
+:global(html.dark .dashboard-dialog .p-dropdown),
+:global(html.dark .dashboard-dialog .p-multiselect) {
   background: rgb(2 6 23);
   border-color: rgb(51 65 85);
   color: rgb(248 250 252);
@@ -1111,8 +1535,10 @@ onBeforeUnmount(() => {
   color: rgb(148 163 184);
 }
 
-:global(html.dark .dashboard-dialog .p-inputtext:enabled:focus),
-:global(html.dark .dashboard-dialog .p-inputtextarea:enabled:focus) {
+:global(html.dark .dashboard-dialog input.p-inputtext:enabled:focus),
+:global(html.dark .dashboard-dialog textarea.p-inputtextarea:enabled:focus),
+:global(html.dark .dashboard-dialog .p-dropdown:not(.p-disabled).p-focus),
+:global(html.dark .dashboard-dialog .p-multiselect:not(.p-disabled).p-focus) {
   border-color: rgb(0 225 255);
   box-shadow: 0 0 0 0.2rem rgba(0, 225, 255, 0.16);
 }
